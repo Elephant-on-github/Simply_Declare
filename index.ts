@@ -53,6 +53,9 @@ async function symlinker(source: string, destination: string, app?: string) {
   }
 }
 
+let configPath = "";
+let targetPath = "";
+
 try {
   const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
   console.log("Parsed Flags:", ParsedFlags);
@@ -62,17 +65,10 @@ try {
   >) {
     for (const [appName, appDetails] of Object.entries(apps)) {
       console.log(`Application: ${appName}`);
-      for (const detail of appDetails) {
-        let configPath = "";
-        let targetPath = "";
-        for (const [key, value] of Object.entries(detail)) {
-          if (key === "config") {
-            const configPath = path.resolve(value);
-          } else if (key === "target") {
-            const targetPath = path.resolve(value);
-          }
-          symlinker(configPath, targetPath, appName);
-        }
+      const config = appDetails.find((d) => "config" in d)?.config;
+      const target = appDetails.find((d) => "target" in d)?.target;
+      if (config && target) {
+        symlinker(path.resolve(config), path.resolve(target), appName);
       }
     }
   }
