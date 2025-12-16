@@ -1,7 +1,8 @@
 import "bun";
 import fs from "node:fs";
 import path from "node:path";
-import command from "commander";
+import { config } from "node:process";
+// import command from "commander";
 
 console.log("Simply Declare started.");
 
@@ -9,43 +10,23 @@ const Exampleyml = `
 Config: true
 Configs:
     - WezTerm:
-        - config: "lua.lua"
-        - target: "test folder 1/wezterm.lua"
+        - config: "./lua.lua"
+        - target: "./test folder 1/wezterm.lua"
     - Alacritty:
-        - config: "alacritty.yml"
-        - target: "test folder 1/alacritty.yml"
+        - config: "./alacritty.yml"
+        - target: "./test folder 1/alacritty.yml"
 # Themes: false
 # Applications: false
 
 `;
 
-try {
-  const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
-  console.log("Parsed Flags:", ParsedFlags);
-  console.log("Simply Declare finished.", ParsedFlags.Configs);
-  for (const apps of ParsedFlags.Configs as Array<Record<string, Array<Record<string, string>>>>) {
-    for (const [appName, appDetails] of Object.entries(apps)) {
-      console.log(`Application: ${appName}`);
-      for (const detail of appDetails) {
-        for (const [key, value] of Object.entries(detail)) {
-          console.log(`  ${key}: ${value}`);
-        }
-      }
-    }
-}
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`Failed to parse YAML: ${message}`);
-  process.exit(1);
-}
-
-async function symlinker() {
-  const source = path.resolve("./cli.json");
-  const destination = path.resolve("./test folder 1/config.json");
+async function symlinker(source: string, destination: string, app?: string) {
+  //   const source = path.resolve("./cli.json");
+  //   const destination = path.resolve("./test folder 1/config.json");
 
   try {
     fs.symlinkSync(source, destination, "file");
-    console.log("Symlink created successfully!");
+    console.log("Symlink for " + app + " created successfully!");
   } catch (err) {
     const errCode = err instanceof Error && "code" in err ? err.code : "";
 
@@ -54,10 +35,12 @@ async function symlinker() {
       process.exit(1);
     } else if (errCode === "EEXIST") {
       let response: string | "n" | null;
-      response = await prompt("Target file already exists. Delete it? (y/n): ");
+      response = await prompt(
+        "Target file for " + app + " already exists. Delete it? (y/n): "
+      );
       if (response?.toLowerCase() === "y") {
         await Bun.file(destination).delete();
-        symlinker();
+        symlinker(source, destination, app);
       } else {
         console.error("Operation cancelled.");
         process.exit(1);
@@ -68,6 +51,35 @@ async function symlinker() {
     }
     process.exit(0);
   }
+}
+
+try {
+  const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
+  console.log("Parsed Flags:", ParsedFlags);
+  console.log("Simply Declare finished.", ParsedFlags.Configs);
+  for (const apps of ParsedFlags.Configs as Array<
+    Record<string, Array<Record<string, string>>>
+  >) {
+    for (const [appName, appDetails] of Object.entries(apps)) {
+      console.log(`Application: ${appName}`);
+      for (const detail of appDetails) {
+        let configPath = "";
+        let targetPath = "";
+        for (const [key, value] of Object.entries(detail)) {
+          if (key === "config") {
+            const configPath = path.resolve(value);
+          } else if (key === "target") {
+            const targetPath = path.resolve(value);
+          }
+          symlinker(configPath, targetPath, appName);
+        }
+      }
+    }
+  }
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Failed to parse YAML: ${message}`);
+  process.exit(1);
 }
 
 // symlinker();
