@@ -8,5 +8,13 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "scripts": {
+    "compile": "bun build --compile --outfile=Test ./index.ts",
+    "dev": "bun run ./index.ts"
+  },
+  "dependencies": {
+    "bun": "^1.3.4",
+    "commander": "^14.0.2"
   }
 }
