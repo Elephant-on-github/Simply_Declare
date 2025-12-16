@@ -32,6 +32,7 @@ try {
     
     if (errCode === 'EPERM') {
         console.error('Permission denied. Try running with elevated privileges.');
+        process.exit(1);
     } else if (errCode === 'EEXIST') {
         let response: string | "n" | null
         response = await prompt('Target file already exists. Delete it? (y/n): ');
@@ -44,9 +45,9 @@ try {
         }
     } else {
         console.error('Error creating symlink:', err);
+        process.exit(1);
     }
-    
-    process.exit(1);
+    process.exit(0);
 }}
 
 symlinker();
