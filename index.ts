@@ -5,7 +5,7 @@ import command from "commander";
 
 console.log("Simply Declare started.");
 
-const Flags = `
+const Exampleyml = `
 Config: true
 Configs:
     - WezTerm:
@@ -20,9 +20,19 @@ Configs:
 `;
 
 try {
-  const ParsedFlags = Bun.YAML.parse(Flags) as Record<string, unknown>;
+  const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
   console.log("Parsed Flags:", ParsedFlags);
-  console.log("Simply Declare finished.", ParsedFlags.configs);
+  console.log("Simply Declare finished.", ParsedFlags.Configs);
+  for (const apps of ParsedFlags.Configs as Array<Record<string, Array<Record<string, string>>>>) {
+    for (const [appName, appDetails] of Object.entries(apps)) {
+      console.log(`Application: ${appName}`);
+      for (const detail of appDetails) {
+        for (const [key, value] of Object.entries(detail)) {
+          console.log(`  ${key}: ${value}`);
+        }
+      }
+    }
+}
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Failed to parse YAML: ${message}`);
