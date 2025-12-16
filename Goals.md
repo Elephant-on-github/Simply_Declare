@@ -1,5 +1,6 @@
 # Simple All in one Declarative config, themes and Applications manager for Linux and Windows (WIP)
 
+- [x] Auto Compile for Distribution and Testing
 - [ ] Config Manager
 - [ ] Theme Manger (gnome, kde, xfce, windows)
 - [ ] Application Manager (install, uninstall, update applications)
