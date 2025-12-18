@@ -8,6 +8,7 @@
 - [ ] Theme Manger (gnome, kde, xfce, windows)
 - [ ] Gnome Extensions
 - [ ] Application Manager (install, uninstall, update applications)
+- [ ] Modular Init command
 - [ ] Documentation
 
 # build

@@ -124,6 +124,19 @@ program
   .description("Initialize a new config file")
   .action(async () => {
     console.log(chalk.blue("Creating a new configuration file..."));
+    console.warn(chalk.yellow("This feature Curls from a Github Repository."));
+    const response = await prompt(chalk.yellow(
+      "Do you want to proceed? (y/n): "
+    )); 
+    if (response?.toLowerCase() !== "y") {
+      console.log(chalk.green("Proceeding with initialization..."));
+      const responsefile = await fetch("")
+      const responseText = await responsefile.text();
+      await Bun.write(Bun.file("SimplyDeclare.yml"), responseText);
+    } else {
+      console.log(chalk.red("Initialization cancelled by user."));
+      process.exit(0);
+    }
     //todo : implement init functionality by curling from github
   });
 
