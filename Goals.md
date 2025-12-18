@@ -1,8 +1,8 @@
 # Simple All in one Declarative config, themes and Applications manager for Linux and Windows (WIP)
 
 - [x] Auto Compile for Distribution and Testing
-- [ ] Config Manager
-- [ ] Pretty Print CLI
+- [x] Config Manager
+- [x] Pretty Print CLI
 - [ ] Yaml Config validation
 - [ ] Git compatibility
 - [ ] Theme Manger (gnome, kde, xfce, windows)
