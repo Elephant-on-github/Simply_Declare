@@ -1,0 +1,10 @@
+Config: true
+Configs:
+    - WezTerm:
+        - config: "./lua.lua"
+        - target: "./test folder 1/wezterm.lua"
+    - Alacritty:
+        - config: "./alacritty.yml"
+        - target: "./test folder 1/alacritty.yml"
+# Themes: false
+# Applications: false

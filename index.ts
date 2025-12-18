@@ -1,24 +1,14 @@
 import "bun";
 import fs from "node:fs";
 import path from "node:path";
+import chalk from "chalk";
 import { config } from "node:process";
 // import command from "commander";
 
-console.log("Simply Declare started.");
 
-const Exampleyml = `
-Config: true
-Configs:
-    - WezTerm:
-        - config: "./lua.lua"
-        - target: "./test folder 1/wezterm.lua"
-    - Alacritty:
-        - config: "./alacritty.yml"
-        - target: "./test folder 1/alacritty.yml"
-# Themes: false
-# Applications: false
+console.log(chalk.blue("Simply Declare started."));
 
-`;
+const Exampleyml = await Bun.file("./example.yml").text();
 
 async function symlinker(source: string, destination: string, app?: string) {
   //   const source = path.resolve("./cli.json");
@@ -26,7 +16,7 @@ async function symlinker(source: string, destination: string, app?: string) {
 
   try {
     fs.symlinkSync(source, destination, "file");
-    console.log("Symlink for " + app + " created successfully!");
+    console.log(chalk.green("Symlink for " + app + " created successfully!"));
   } catch (err) {
     const errCode = err instanceof Error && "code" in err ? err.code : "";
 
@@ -40,10 +30,11 @@ async function symlinker(source: string, destination: string, app?: string) {
       );
       if (response?.toLowerCase() === "y") {
         await Bun.file(destination).delete();
-        symlinker(source, destination, app);
+        console.log(chalk.yellow("Existing file deleted."));
+        await symlinker(source, destination, app);
       } else {
-        console.error("Operation cancelled.");
-        process.exit(1);
+        console.error("Operation(s) cancelled.");
+        process.exit(0);
       }
     } else {
       console.error("Error creating symlink:", err);
@@ -59,7 +50,7 @@ let targetPath = "";
 try {
   const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
   console.log("Parsed Flags:", ParsedFlags);
-  console.log("Simply Declare finished.", ParsedFlags.Configs);
+  console.log(chalk.green("Simply Declare finished."), ParsedFlags.Configs);
   for (const apps of ParsedFlags.Configs as Array<
     Record<string, Array<Record<string, string>>>
   >) {
