@@ -5,10 +5,22 @@ import chalk from "chalk";
 import { config } from "node:process";
 // import command from "commander";
 
-
 console.log(chalk.blue("Simply Declare started."));
 
-const Exampleyml = await Bun.file("./example.yml").text();
+async function Getfile(filePath: string): Promise<string> {
+  try {
+    return await Bun.file(filePath).text();
+  } catch (error) {
+    if (error == "ENOENT") {
+      console.error(chalk.red("File not found: " + filePath));
+      //todo Create file
+      process.exit(1);
+    } else {
+      console.error(chalk.red("Error reading file: " + filePath), error);
+      process.exit(1);
+    }
+  }
+}
 
 async function symlinker(source: string, destination: string, app?: string) {
   try {
@@ -18,13 +30,13 @@ async function symlinker(source: string, destination: string, app?: string) {
     const errCode = err instanceof Error && "code" in err ? err.code : "";
 
     if (errCode === "EPERM") {
-      console.error(chalk.red("Permission denied. Try running with elevated privileges."));
-      // We keep the exit(1) here because if you don't have perms, 
+      console.error(
+        chalk.red("Permission denied. Try running with elevated privileges.")
+      );
+      // We keep the exit(1) here because if you don't have perms,
       // the rest of the links will likely fail too.
-      process.exit(1); 
-    } 
-    
-    else if (errCode === "EEXIST") {
+      process.exit(1);
+    } else if (errCode === "EEXIST") {
       const response = await prompt(
         "Target file for " + app + " already exists. Delete it? (y/n): "
       );
@@ -38,9 +50,7 @@ async function symlinker(source: string, destination: string, app?: string) {
         console.log(chalk.blue(`Skipping ${app} as requested.`));
         return; // Important: Return to the loop so the next app can process
       }
-    } 
-    
-    else {
+    } else {
       console.error(chalk.red(`Error creating symlink for ${app}:`), err);
       return; // Return so the script doesn't crash entirely for one bad path
     }
@@ -51,7 +61,7 @@ let configPath = "";
 let targetPath = "";
 
 try {
-  const ParsedFlags = Bun.YAML.parse(Exampleyml) as Record<string, unknown>;
+  const ParsedFlags = Bun.YAML.parse(await Getfile("./example.yml")) as Record<string, unknown>;
   console.log("Parsed Flags:", ParsedFlags);
   console.log(chalk.green("Simply Declare finished."), ParsedFlags.Configs);
   for (const apps of ParsedFlags.Configs as Array<
