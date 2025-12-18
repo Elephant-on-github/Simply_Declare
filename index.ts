@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { config } from "node:process";
-// import command from "commander";
+import { Command } from "commander";
 
 console.log(chalk.blue("Simply Declare started."));
 
@@ -13,7 +13,13 @@ async function Getfile(filePath: string): Promise<string> {
   } catch (error) {
     if (error == "ENOENT") {
       console.error(chalk.red("File not found: " + filePath));
-      //todo Create file
+      console.log(
+        chalk.yellow(
+          "Pleae Provide a valid file path or run",
+          chalk.white("'simply-declare init'"),
+          "to create a new config file."
+        )
+      );
       process.exit(1);
     } else {
       console.error(chalk.red("Error reading file: " + filePath), error);
@@ -56,25 +62,56 @@ async function symlinker(source: string, destination: string, app?: string) {
     }
   }
 }
-
-try {
-  const ParsedFlags = Bun.YAML.parse(await Getfile("./example.yml")) as Record<string, unknown>;
-  console.log("Parsed Flags:", ParsedFlags);
-  console.log(chalk.green("Simply Declare finished."), ParsedFlags.Configs);
-  for (const apps of ParsedFlags.Configs as Array<
-    Record<string, Array<Record<string, string>>>
-  >) {
-    for (const [appName, appDetails] of Object.entries(apps)) {
-      console.log(`Application: ${appName}`);
-      const config = appDetails.find((d) => "config" in d)?.config;
-      const target = appDetails.find((d) => "target" in d)?.target;
-      if (config && target) {
-        await symlinker(path.resolve(config), path.resolve(target), appName);
+async function main(configPath: string = "./example.yml") {
+  try {
+    const ParsedFlags = Bun.YAML.parse(await Getfile(configPath)) as Record<
+      string,
+      unknown
+    >;
+    console.log("Parsed Flags:", ParsedFlags);
+    console.log(chalk.green("Simply Declare finished."), ParsedFlags.Configs);
+    for (const apps of ParsedFlags.Configs as Array<
+      Record<string, Array<Record<string, string>>>
+    >) {
+      for (const [appName, appDetails] of Object.entries(apps)) {
+        console.log(`Application: ${appName}`);
+        const config = appDetails.find((d) => "config" in d)?.config;
+        const target = appDetails.find((d) => "target" in d)?.target;
+        if (config && target) {
+          await symlinker(path.resolve(config), path.resolve(target), appName);
+        }
       }
     }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to parse YAML: ${message}`);
+    process.exit(1);
   }
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`Failed to parse YAML: ${message}`);
-  process.exit(1);
 }
+
+const program = new Command();
+
+program
+  .name("simply-declare")
+  .description("A CLI to manage declarations")
+  .version("1.0.0");
+
+// The 'init' command
+program
+  .command("init")
+  .description("Initialize a new config file")
+  .action(() => {
+    console.log("Initializing configuration...");
+    // Your logic to create a template YAML file
+  });
+
+// The default 'run' command (taking the config as an argument)
+program
+  .command("run", { isDefault: true }) // Setting isDefault: true allows 'simply-declare my-file.yaml'
+  .description("Run the tool with a config file")
+  .argument("<config>", "Path to the YAML configuration file")
+  .action((config) => {
+    main(config);
+  });
+
+program.parse();
