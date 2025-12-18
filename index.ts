@@ -128,16 +128,16 @@ program
     const response = await prompt(chalk.yellow(
       "Do you want to proceed? (y/n): "
     )); 
-    if (response?.toLowerCase() !== "y") {
+    if (response?.toLowerCase() === "y") {
       console.log(chalk.green("Proceeding with initialization..."));
-      const responsefile = await fetch("")
+      const responsefile = await fetch("https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml")
       const responseText = await responsefile.text();
       await Bun.write(Bun.file("SimplyDeclare.yml"), responseText);
+      console.log(chalk.green("Configuration file 'SimplyDeclare.yml' created successfully."));
     } else {
       console.log(chalk.red("Initialization cancelled by user."));
       process.exit(0);
     }
-    //todo : implement init functionality by curling from github
   });
 
 program
