@@ -112,6 +112,29 @@ async function main(configPath: string) {
   }
 }
 
+async function initConfig() {
+  console.warn(chalk.yellow("This feature Curls from a Github Repository."));
+  const response = await prompt(
+    chalk.yellow("Do you want to proceed? (y/n): ")
+  );
+  if (response?.toLowerCase() === "y") {
+    console.log(chalk.green("Proceeding with initialization..."));
+    const responsefile = await fetch(
+      "https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml"
+    );
+    const responseText = await responsefile.text();
+    await Bun.write(Bun.file("SimplyDeclare.yml"), responseText);
+    console.log(
+      chalk.green(
+        "Configuration file 'SimplyDeclare.yml' created successfully."
+      )
+    );
+  } else {
+    console.log(chalk.red("Initialization cancelled by user."));
+    process.exit(0);
+  }
+}
+
 const program = new Command();
 
 program
@@ -124,28 +147,28 @@ program
   .description("Initialize a new config file")
   .action(async () => {
     console.log(chalk.blue("Creating a new configuration file..."));
-    console.warn(chalk.yellow("This feature Curls from a Github Repository."));
-    const response = await prompt(chalk.yellow(
-      "Do you want to proceed? (y/n): "
-    )); 
-    if (response?.toLowerCase() === "y") {
-      console.log(chalk.green("Proceeding with initialization..."));
-      const responsefile = await fetch("https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml")
-      const responseText = await responsefile.text();
-      await Bun.write(Bun.file("SimplyDeclare.yml"), responseText);
-      console.log(chalk.green("Configuration file 'SimplyDeclare.yml' created successfully."));
-    } else {
-      console.log(chalk.red("Initialization cancelled by user."));
-      process.exit(0);
-    }
+    initConfig();
   });
 
 program
   .command("run", { isDefault: true })
   .description("Run the tool with a config file")
-  .argument("<config>", "Path to the YAML configuration file")
-  .action((config) => {
-    main(config);
+  .argument("[config]", "Path to the YAML configuration file", "Not-given")
+  .action(async (config) => {
+    if (
+      config === "Not-given" &&
+      (await Bun.file("SimplyDeclare.yml").exists())
+    ) {
+      config = "SimplyDeclare.yml";
+      main(config);
+    } else if (config === "Not-given") {
+      console.error(
+        chalk.blue("\nNo configuration file provided Initializing...")
+      );
+      initConfig();
+    } else {
+      main(config);
+    }
   });
 
 program.parse();
