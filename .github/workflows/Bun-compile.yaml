@@ -1,8 +1,16 @@
-name: Bun Compile Executable
+name: Bun Compile & Release
 
 on:
   push:
-    branches: ["**"]
+    branches: ["**"]  # Automatic test builds on every push
+    tags:
+      - 'v*'          # Automatic Release on version tags
+  workflow_dispatch:  # Manual Release trigger
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
   build:
@@ -10,14 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Define targets here to run them in parallel
         include:
           - os: linux
             target: bun-linux-x64-modern
-            outfile: linux-test
+            outfile: simply-declare-linux
           - os: windows
             target: bun-windows-x64-modern
-            outfile: windows-test.exe
+            outfile: simply-declare-windows.exe
 
     steps:
       - name: ⬇️ Checkout Repository
@@ -28,23 +35,59 @@ jobs:
         with:
           bun-version: latest
 
-      # ⚡ This is the "Light & Quick" magic:
-      - name: 💾 Cache Bun Dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          # Use matrix.os in the key to keep caches separate
-          key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-
       - name: 📦 Install Dependencies
         run: bun install --frozen-lockfile
 
       - name: 🔨 Compile Executable
-        run: bun build --compile --target=${{ matrix.target }} --outfile=${{ matrix.outfile }} ./index.ts
+        run: bun build --compile --minify --bytecode --target=${{ matrix.target }} --outfile=${{ matrix.outfile }} ./index.ts
+
+      - name: 🗜️ Compress with UPX
+        uses: svenstaro/upx-action@v2
+        with:
+          file: |
+            ${{ matrix.outfile }}
+          args: --best --lzma
+          strip: true
+
+      - name: 🔑 Generate Checksum
+        shell: bash
+        run: sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
 
       - name: ⬆️ Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-executable
-          path: ${{ matrix.outfile }}
-          retention-days: 1 # ⚡ Keeps your storage light
+          path: |
+            ${{ matrix.outfile }}
+            ${{ matrix.outfile }}.sha256
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: ⬇️ Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: 🚀 Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: Release ${{ github.event.inputs.tag_name || github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            ./artifacts/simply-declare-linux
+            ./artifacts/simply-declare-linux.sha256
+            ./artifacts/simply-declare-windows.exe
+            ./artifacts/simply-declare-windows.exe.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
