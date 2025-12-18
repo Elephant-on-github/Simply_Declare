@@ -41,14 +41,6 @@ jobs:
       - name: 🔨 Compile Executable
         run: bun build --compile --minify --bytecode --target=${{ matrix.target }} --outfile=${{ matrix.outfile }} ./index.ts
 
-      - name: 🗜️ Compress with UPX
-        uses: svenstaro/upx-action@v2
-        with:
-          file: |
-            ${{ matrix.outfile }}
-          args: --best --lzma
-          strip: true
-
       - name: 🔑 Generate Checksum
         shell: bash
         run: sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
