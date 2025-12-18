@@ -6,6 +6,7 @@
 - [ ] Yaml Config validation
 - [ ] Git compatibility
 - [ ] Theme Manger (gnome, kde, xfce, windows)
+- [ ] Gnome Extensions
 - [ ] Application Manager (install, uninstall, update applications)
 - [ ] Documentation
 
