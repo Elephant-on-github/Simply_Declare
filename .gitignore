@@ -35,7 +35,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 #Random Test files
 commanderpractice.js
-allacrity.yml
+alacritty.yml
 cli.json
-.test folder 1
+test folder 1/
 lua.lua
