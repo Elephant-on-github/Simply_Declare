@@ -57,9 +57,6 @@ async function symlinker(source: string, destination: string, app?: string) {
   }
 }
 
-let configPath = "";
-let targetPath = "";
-
 try {
   const ParsedFlags = Bun.YAML.parse(await Getfile("./example.yml")) as Record<string, unknown>;
   console.log("Parsed Flags:", ParsedFlags);
