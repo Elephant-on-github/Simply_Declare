@@ -6,5 +6,12 @@ Configs:
     - Alacritty:
         - config: "./alacritty.yml"
         - target: "./test folder 1/alacritty.yml"
+    #todo Implement below
+    # - Tatty1:
+    #     - config: "https://github.com/Elephant-on-github/Simply_Declare/blob/main/Example.yml" #github from url
+    #     - target: "tatty1.yml"
+    # - Tatty2:
+    #     - config: Elephant-on-github:Simply_Declare:Example.yml
+    #     - target: "tatty2.yml"
 # Themes: false
 # Applications: false

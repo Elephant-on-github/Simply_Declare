@@ -1,10 +1,10 @@
 import "bun";
 import fs from "node:fs";
-import path from "node:path";
+import path, { relative } from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
 
-async function Getfile(filePath: string): Promise<string> {
+export async function Getfile(filePath: string): Promise<string> {
   try {
     const file = Bun.file(filePath);
     const exists = await file.exists();
@@ -32,7 +32,7 @@ async function Getfile(filePath: string): Promise<string> {
   }
 }
 
-async function symlinker(source: string, destination: string, app?: string) {
+export async function symlinker(source: string, destination: string, app?: string) {
   try {
     // Ensure parent directory for destination exists
     const destDir = path.dirname(destination);
@@ -71,7 +71,38 @@ async function symlinker(source: string, destination: string, app?: string) {
   }
 }
 
-async function main(configPath: string) {
+export async function Getgit(author: string, repo: string, relative_path: string) {
+  console.log(author, repo, relative_path)
+  if (!author || !repo) {
+    console.error(
+      chalk.red("Either author or repo is false in a github definition")
+    )
+
+    throw("error")
+    //! throw more urgent error
+  } else {
+    let relative_p: string | undefined
+    relative_p = "/" + relative_path
+    const path: string = "https://raw.githubusercontent.com/" + author + "/" + repo + "/refs/heads/main" + relative_p
+    console.log(path)
+    return (path)
+  }
+
+}
+
+export async function download(url: string, target: string) {
+  console.log("started")
+  const responsefile = await fetch(url);
+  const responseText = await responsefile.text();
+  await Bun.write(Bun.file(target), responseText);
+  console.log(
+    chalk.green(
+      `Configuration file ${target} created successfully.`
+    )
+  );
+}
+
+export async function main(configPath: string) {
   const fileContent = await Getfile(configPath);
 
   try {
@@ -112,7 +143,7 @@ async function main(configPath: string) {
   }
 }
 
-async function initConfig() {
+export async function initConfig() {
   console.warn(chalk.yellow("This feature Curls from a Github Repository."));
   const response = await prompt(
     chalk.yellow("Do you want to proceed? (y/n): ")
@@ -171,4 +202,6 @@ program
     }
   });
 
+
 program.parse();
+
