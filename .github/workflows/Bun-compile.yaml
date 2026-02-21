@@ -39,7 +39,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: 🔨 Compile Executable
-        run: bun build --compile --minify --bytecode --target=${{ matrix.target }} --outfile=${{ matrix.outfile }} ./index.ts
+        run: bun build --compile --minify --bytecode --target=${{ matrix.target }} --outfile=${{ matrix.outfile }} ./program.ts
 
       - name: 🔑 Generate Checksum
         shell: bash
