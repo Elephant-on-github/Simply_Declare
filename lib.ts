@@ -1,10 +1,10 @@
 import "bun";
 import fs from "node:fs";
-import path from "node:path";
+import path, { relative } from "node:path";
 import chalk from "chalk";
-import { Command } from "commander";
 
-async function Getfile(filePath: string): Promise<string> {
+
+export async function Getfile(filePath: string): Promise<string> {
   try {
     const file = Bun.file(filePath);
     const exists = await file.exists();
@@ -32,7 +32,7 @@ async function Getfile(filePath: string): Promise<string> {
   }
 }
 
-async function symlinker(source: string, destination: string, app?: string) {
+export async function symlinker(source: string, destination: string, app?: string) {
   try {
     // Ensure parent directory for destination exists
     const destDir = path.dirname(destination);
@@ -51,7 +51,7 @@ async function symlinker(source: string, destination: string, app?: string) {
       );
       process.exit(1);
     } else if (err.code === "EEXIST") {
-      const response = await prompt(
+      const response = prompt(
         `Target file for ${app} already exists. Overwrite? (y/n): `
       );
 
@@ -71,7 +71,8 @@ async function symlinker(source: string, destination: string, app?: string) {
   }
 }
 
-async function main(configPath: string) {
+
+export async function main(configPath: string) {
   const fileContent = await Getfile(configPath);
 
   try {
@@ -112,9 +113,9 @@ async function main(configPath: string) {
   }
 }
 
-async function initConfig() {
+export async function initConfig() {
   console.warn(chalk.yellow("This feature Curls from a Github Repository."));
-  const response = await prompt(
+  const response = prompt(
     chalk.yellow("Do you want to proceed? (y/n): ")
   );
   if (response?.toLowerCase() === "y") {
@@ -135,40 +136,49 @@ async function initConfig() {
   }
 }
 
-const program = new Command();
-
-program
-  .name("simply-declare")
-  .description("A CLI to manage declarations")
-  .version("1.0.0");
-
-program
-  .command("init")
-  .description("Initialize a new config file")
-  .action(async () => {
-    console.log(chalk.blue("Creating a new configuration file..."));
-    initConfig();
-  });
-
-program
-  .command("run", { isDefault: true })
-  .description("Run the tool with a config file")
-  .argument("[config]", "Path to the YAML configuration file", "Not-given")
-  .action(async (config) => {
-    if (
-      config === "Not-given" &&
-      (await Bun.file("SimplyDeclare.yml").exists())
-    ) {
-      config = "SimplyDeclare.yml";
-      main(config);
-    } else if (config === "Not-given") {
-      console.error(
-        chalk.blue("\nNo configuration file provided Initializing...")
-      );
-      initConfig();
-    } else {
-      main(config);
+export async function parseGit(input_from_config: string) : Promise<[string, string, string]> {
+  // * 1 target :
+  // Elephant-on-github:Simply_Declare:Example.yml
+  // output should be string, string, string
+    const parts = input_from_config.split(":");
+    // optional runtime check
+    if (parts.length !== 3) {
+        throw new Error("Invalid git spec - expected owner:repo:path");
     }
-  });
+    // tell TypeScript this is a tuple
+    const [owner, repo, path] = parts as [string, string, string];
+    return [owner, repo, path];
 
-program.parse();
+}
+
+
+export async function Getgit(author: string, repo: string, relative_path: string) {
+  console.log(author, repo, relative_path)
+  if (!author || !repo) {
+    console.error(
+      chalk.red("Either author or repo is false in a github definition")
+    )
+
+    throw("error")
+    //! throw more urgent error
+  } else {
+    let relative_p: string | undefined
+    relative_p = "/" + relative_path
+    const path: string = "https://raw.githubusercontent.com/" + author + "/" + repo + "/refs/heads/main" + relative_p
+    console.log(path)
+    return (path)
+  }
+
+}
+
+export async function download(url: string, target: string) {
+  console.log("started")
+  const responsefile = await fetch(url);
+  const responseText = await responsefile.text();
+  await Bun.write(Bun.file(target), responseText);
+  console.log(
+    chalk.green(
+      `Configuration file ${target} created successfully.`
+    )
+  );
+}
