@@ -8,10 +8,10 @@ Configs:
         - target: "./test folder 1/alacritty.yml"
     #todo Implement below
     # - Tatty1:
-    #     - config: "https://github.com/Elephant-on-github/Simply_Declare/blob/main/Example.yml" #github from url
+    #     - url: "https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml" #from raw github url
     #     - target: "tatty1.yml"
     # - Tatty2:
-    #     - config: Elephant-on-github:Simply_Declare:Example.yml
+    #     - github: Elephant-on-github:Simply_Declare:Example.yml
     #     - target: "tatty2.yml"
 # Themes: false
 # Applications: false
