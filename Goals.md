@@ -13,4 +13,4 @@
 - [ ] Documentation
 
 # build
-`bun build --compile --outfile=test ./index.ts`
+`bun build --compile --outfile=simply-declare ./program.ts`
