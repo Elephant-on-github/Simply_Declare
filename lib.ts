@@ -478,7 +478,8 @@ async function runPmFor(pm: PmName, action: keyof PmDefinition["commands"], pkg?
   const args = [...def.commands[action]];
   if (pkg) args.push(pkg);
   const binary = resolveBinaryPath(def.binary) || def.binary;
-  const cmd = def.needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
+  const needsSudo = def.needsSudo && process.platform !== "win32";
+  const cmd = needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
   console.log(chalk.cyan(`  [${pm}] ${cmd.join(" ")}`));
   const proc = spawnCmd(cmd);
   printResult(proc);
