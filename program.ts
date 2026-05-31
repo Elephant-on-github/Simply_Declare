@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {initConfig, main} from "./lib"
-
+import { parse as parseYaml } from "yaml";
+import { initConfig, main, validateConfig } from "./lib"
+import { readFileSync } from "node:fs";
 
 const program = new Command();
 
@@ -16,6 +17,31 @@ program
   .action(async () => {
     console.log(chalk.blue("Creating a new configuration file..."));
     initConfig();
+  });
+
+program
+  .command("validate")
+  .description("Validate a YAML configuration file")
+  .argument("<config>", "Path to the YAML configuration file")
+  .action(async (config) => {
+    try {
+      const content = readFileSync(config, "utf-8");
+      const parsed = parseYaml(content);
+      const result = validateConfig(parsed);
+      if (result.success) {
+        console.log(chalk.green.bold("✓ Configuration is valid!"));
+        console.log(chalk.blue(`Found ${result.data.Configs.length} application(s).`));
+      } else {
+        console.error(chalk.red.bold("✗ Configuration is invalid:"));
+        for (const issue of result.error.issues) {
+          console.error(chalk.red(`  - ${issue.path.join(".")}: ${issue.message}`));
+        }
+        process.exit(1);
+      }
+    } catch (error: any) {
+      console.error(chalk.red(`Failed to read or parse file: ${error.message}`));
+      process.exit(1);
+    }
   });
 
 program
