@@ -375,7 +375,7 @@ const PM_ORDER: PmName[] = ["winget", "choco", "scoop", "apt", "pacman", "dnf", 
 
 let detectedPm: PmName | null = null;
 
-function binaryExists(binary: string): boolean {
+function resolveBinaryPath(binary: string): string | null {
   const isWin = process.platform === "win32";
   const name = isWin ? `${binary}.exe` : binary;
 
@@ -383,7 +383,7 @@ function binaryExists(binary: string): boolean {
   for (const dir of pathDirs) {
     try {
       const full = path.resolve(dir.trim(), name);
-      if (fs.existsSync(full)) return true;
+      if (fs.existsSync(full)) return full;
     } catch {}
   }
 
@@ -391,16 +391,22 @@ function binaryExists(binary: string): boolean {
     const localAppData = process.env.LOCALAPPDATA || "";
     const winAppsDir = path.join(localAppData, "Microsoft", "WindowsApps");
     try {
-      if (fs.existsSync(path.join(winAppsDir, name))) return true;
+      const full = path.join(winAppsDir, name);
+      if (fs.existsSync(full)) return full;
     } catch {}
   }
 
   try {
     const proc = Bun.spawnSync([isWin ? "where" : "which", binary]);
-    return proc.exitCode === 0;
-  } catch {
-    return false;
-  }
+    if (proc.exitCode === 0) {
+      return proc.stdout.toString().trim().split("\n")[0]?.trim() || null;
+    }
+  } catch {}
+  return null;
+}
+
+function binaryExists(binary: string): boolean {
+  return resolveBinaryPath(binary) !== null;
 }
 
 export async function detectPackageManager(): Promise<PmName> {
@@ -430,20 +436,30 @@ async function runPm(action: keyof PmDefinition["commands"], pkg?: string) {
   const def = PM_REGISTRY[pm];
   const args = [...def.commands[action]];
   if (pkg) args.push(pkg);
-  const binary = def.binary;
+  const binary = resolveBinaryPath(def.binary) || def.binary;
   const cmd = def.needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
   console.log(chalk.cyan(`Running: ${cmd.join(" ")}`));
-  const proc = Bun.spawnSync(cmd);
-  const out = proc.stdout.toString();
-  const errOut = proc.stderr.toString();
-  if (proc.exitCode !== 0) {
-    console.error(chalk.red(`Command failed (exit ${proc.exitCode}):`));
-    if (errOut) console.error(chalk.red(errOut));
-    if (out) console.log(out);
-    process.exit(1);
+  let proc: import("bun").SyncSubprocess;
+  if (process.platform === "win32") {
+    const shellCmd = cmd.map(a => /[\s"]/.test(a) ? `"${a}"` : a).join(" ");
+    proc = Bun.spawnSync(["cmd.exe", "/c", shellCmd]);
+  } else {
+    proc = Bun.spawnSync(cmd);
   }
-  if (out) console.log(out);
-  if (errOut) console.error(chalk.yellow(errOut));
+  const out = (proc.stdout || "").toString();
+  const errOut = (proc.stderr || "").toString();
+  const cleanOut = out.replace(/[\r\n]+/g, "\n").replace(/\s+$/, "");
+  const cleanErr = errOut.replace(/[\r\n]+/g, "\n").replace(/\s+$/, "");
+  if (proc.exitCode !== 0) {
+    if (cleanErr) console.error(chalk.yellow(cleanErr));
+    if (cleanOut) console.log(cleanOut);
+    if (proc.exitCode !== 43) {
+      console.error(chalk.red(`Command finished with exit code ${proc.exitCode}`));
+    }
+  } else {
+    if (cleanOut) console.log(cleanOut);
+    if (cleanErr) console.error(chalk.yellow(cleanErr));
+  }
 }
 
 export async function appInstall(pkg: string) {
