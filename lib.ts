@@ -375,23 +375,47 @@ const PM_ORDER: PmName[] = ["winget", "choco", "scoop", "apt", "pacman", "dnf", 
 
 let detectedPm: PmName | null = null;
 
+function binaryExists(binary: string): boolean {
+  const isWin = process.platform === "win32";
+  const name = isWin ? `${binary}.exe` : binary;
+
+  const pathDirs = (process.env.PATH || "").split(path.delimiter);
+  for (const dir of pathDirs) {
+    try {
+      const full = path.resolve(dir.trim(), name);
+      if (fs.existsSync(full)) return true;
+    } catch {}
+  }
+
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || "";
+    const winAppsDir = path.join(localAppData, "Microsoft", "WindowsApps");
+    try {
+      if (fs.existsSync(path.join(winAppsDir, name))) return true;
+    } catch {}
+  }
+
+  try {
+    const proc = Bun.spawnSync([isWin ? "where" : "which", binary]);
+    return proc.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function detectPackageManager(): Promise<PmName> {
   if (detectedPm) return detectedPm;
 
   const isWin = process.platform === "win32";
-  const whichCmd = isWin ? "where" : "which";
 
   for (const pm of PM_ORDER) {
     if (isWin && !["winget", "choco", "scoop"].includes(pm)) continue;
     if (!isWin && ["winget", "choco", "scoop"].includes(pm)) continue;
 
-    try {
-      const result = await Bun.$`${whichCmd} ${pm}`.quiet();
-      if (result.exitCode === 0) {
-        detectedPm = pm;
-        return pm;
-      }
-    } catch {}
+    if (binaryExists(pm)) {
+      detectedPm = pm;
+      return pm;
+    }
   }
   throw new Error("No supported package manager found on this system");
 }
