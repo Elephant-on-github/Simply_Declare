@@ -17,7 +17,7 @@ const ApplicationsSchema = z.object({
   Applications: z.object({
     install: z.array(z.string()).optional(),
     remove: z.array(z.string()).optional(),
-    apps: z.record(z.string(), z.array(z.string())).optional(),
+    "package-managers": z.record(z.string(), z.array(z.string())).optional(),
   }).optional(),
 });
 
@@ -480,7 +480,7 @@ export async function initConfig() {
         if (list.length) appsRecord[pm] = list;
       }
 
-      if (Object.keys(appsRecord).length) config.Applications.apps = appsRecord;
+      if (Object.keys(appsRecord).length) config.Applications["package-managers"] = appsRecord;
     }
   }
 
@@ -985,8 +985,8 @@ export async function processApplications(apps: ApplicationsConfig["Applications
     }
   }
 
-  if (apps.apps) {
-    for (const [pmName, pkgs] of Object.entries(apps.apps as Record<string, string[]>)) {
+  if (apps["package-managers"]) {
+    for (const [pmName, pkgs] of Object.entries(apps["package-managers"] as Record<string, string[]>)) {
       const pm = PM_NAME_MAP[pmName.toLowerCase()];
       if (!pm) {
         console.warn(chalk.yellow(`  Unknown package manager "${pmName}" — skipping`));

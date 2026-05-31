@@ -19,7 +19,7 @@ Applications:
         # - neovim
         # - ripgrep
     remove: []
-    apps:
+    package-managers:
         winget:
             - powertoys
             - microsoft-windows-terminal

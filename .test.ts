@@ -161,7 +161,7 @@ describe("validateConfig with Applications", () => {
     const input = {
       Configs: [],
       Applications: {
-        apps: {
+        "package-managers": {
           winget: ["powertoys", "terminal"],
           scoop: ["cowsay"],
         },
