@@ -324,10 +324,10 @@ const PM_REGISTRY: Record<PmName, PmDefinition> = {
       install: ["install", "--silent", "--accept-package-agreements"],
       remove: ["uninstall", "--silent"],
       update: ["upgrade", "--silent", "--accept-package-agreements"],
-      upgrade: ["upgrade", "--all", "--silent", "--accept-package-agreements"],
+      upgrade: ["upgrade", "--silent", "--accept-package-agreements", "--all"],
       search: ["search"],
       list: ["list"],
-      listOutdated: ["upgrade", "--all", "--silent", "--accept-package-agreements", "--dry-run"],
+      listOutdated: ["upgrade"],
     },
   },
   brew: {
