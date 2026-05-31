@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseGit, Getgit, validateConfig } from "./lib";
+import { parseGit, Getgit, validateConfig, detectPackageManager, getPmName } from "./lib";
 
 describe("parseGit", () => {
   it("parses a valid owner:repo:path spec", async () => {
@@ -114,5 +114,65 @@ describe("validateConfig", () => {
     const result = validateConfig(input);
     expect(result.success).toBe(true);
     expect(result.data!.Configs.length).toBe(2);
+  });
+});
+
+describe("validateConfig with Applications", () => {
+  it("accepts a config with Applications section", () => {
+    const input = {
+      Config: true,
+      Configs: [
+        { WezTerm: [{ config: "./a", target: "./b" }] },
+      ],
+      Applications: {
+        install: ["git", "neovim"],
+        remove: ["bad-app"],
+      },
+    };
+    const result = validateConfig(input);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a config with empty Applications section", () => {
+    const input = {
+      Configs: [
+        { App: [{ config: "./a", target: "./b" }] },
+      ],
+      Applications: {
+        install: [],
+        remove: [],
+      },
+    };
+    const result = validateConfig(input);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a config without Applications section", () => {
+    const input = {
+      Configs: [
+        { App: [{ config: "./a", target: "./b" }] },
+      ],
+    };
+    const result = validateConfig(input);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("detectPackageManager", () => {
+  it("detects a package manager on this system", async () => {
+    const pm = await detectPackageManager();
+    expect(["winget", "choco", "scoop", "apt", "pacman", "dnf", "brew"]).toContain(pm);
+  });
+
+  it("returns the same PM on repeated calls", async () => {
+    const pm1 = await detectPackageManager();
+    const pm2 = await detectPackageManager();
+    expect(pm1).toBe(pm2);
+  });
+
+  it("getPmName returns the detected PM", async () => {
+    await detectPackageManager();
+    const name = getPmName();
+    expect(name).toBeTruthy();
   });
 });

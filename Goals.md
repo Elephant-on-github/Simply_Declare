@@ -3,12 +3,12 @@
 - [x] Auto Compile for Distribution and Testing
 - [x] Config Manager
 - [x] Pretty Print CLI
-- [?] Yaml Config validation
-- [1/2] Git compatibility
-- [ ] Tests
+- [x] Yaml Config validation
+- [x] Git compatibility
+- [x] Tests
 - [ ] Theme Manger (gnome, kde, xfce, windows)
 - [ ] Gnome Extensions
-- [ ] Application Manager (install, uninstall, update applications)
+- [x] Application Manager (install, uninstall, update applications)
 - [ ] Modular Init command
 - [ ] Documentation
 

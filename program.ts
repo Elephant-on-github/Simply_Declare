@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { parse as parseYaml } from "yaml";
-import { initConfig, main, validateConfig } from "./lib"
+import { initConfig, main, validateConfig, appInstall, appRemove, appUpdate, appUpgrade, appSearch, appList, detectPackageManager } from "./lib"
 import { readFileSync } from "node:fs";
 
 const program = new Command();
@@ -42,6 +42,65 @@ program
       console.error(chalk.red(`Failed to read or parse file: ${error.message}`));
       process.exit(1);
     }
+  });
+
+const app = program
+  .command("app")
+  .description("Manage system packages via the native package manager");
+
+app
+  .command("install <package...>")
+  .description("Install one or more packages")
+  .action(async (packages: string[]) => {
+    await detectPackageManager();
+    for (const pkg of packages) {
+      await appInstall(pkg);
+    }
+  });
+
+app
+  .command("remove <package...>")
+  .description("Remove one or more packages")
+  .action(async (packages: string[]) => {
+    await detectPackageManager();
+    for (const pkg of packages) {
+      await appRemove(pkg);
+    }
+  });
+
+app
+  .command("update <package...>")
+  .description("Update one or more packages")
+  .action(async (packages: string[]) => {
+    await detectPackageManager();
+    for (const pkg of packages) {
+      await appUpdate(pkg);
+    }
+  });
+
+app
+  .command("upgrade")
+  .description("Upgrade all packages")
+  .action(async () => {
+    await detectPackageManager();
+    await appUpgrade();
+  });
+
+app
+  .command("search <query>")
+  .description("Search for packages")
+  .action(async (query: string) => {
+    await detectPackageManager();
+    await appSearch(query);
+  });
+
+app
+  .command("list")
+  .description("List installed packages")
+  .option("-o, --outdated", "Show outdated packages only")
+  .action(async (options: { outdated?: boolean }) => {
+    await detectPackageManager();
+    await appList(options.outdated);
   });
 
 program

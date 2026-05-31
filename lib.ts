@@ -12,10 +12,17 @@ const AppEntrySchema = z.array(
 
 const AppSchema = z.record(z.string(), AppEntrySchema);
 
+const ApplicationsSchema = z.object({
+  Applications: z.object({
+    install: z.array(z.string()).optional(),
+    remove: z.array(z.string()).optional(),
+  }).optional(),
+});
+
 const ConfigSchema = z.object({
   Config: z.boolean().optional(),
   Configs: z.array(AppSchema),
-});
+}).passthrough();
 
 type MergedEntry = Record<string, string>;
 
@@ -147,31 +154,40 @@ export async function main(configPath: string) {
     process.exit(1);
   }
 
-  console.log(
-    chalk.blue(`Processing ${result.data.Configs.length} application(s)...`)
-  );
+  const parsedAny = parsed as any;
 
-  for (const appObj of result.data.Configs) {
-    for (const [appName, entries] of Object.entries(appObj)) {
-      const entry = resolveEntry(entries);
+  if (parsedAny.Configs) {
+    console.log(
+      chalk.blue(`Processing ${parsedAny.Configs.length} config symlink(s)...`)
+    );
 
-      if (entry.url) {
-        console.log(chalk.cyan(`Downloading ${appName} from URL...`));
-        await download(entry.url, path.resolve(entry.target));
-      } else if (entry.github) {
-        const [owner, repo, repoPath] = await parseGit(entry.github);
-        const url = await Getgit(owner, repo, repoPath);
-        console.log(chalk.cyan(`Downloading ${appName} from GitHub...`));
-        await download(url, path.resolve(entry.target));
-      } else if (entry.config) {
-        await symlinker(
-          path.resolve(entry.config),
-          path.resolve(entry.target),
-          appName
-        );
+    for (const appObj of parsedAny.Configs) {
+      for (const [appName, entries] of Object.entries(appObj)) {
+        const entry = resolveEntry(entries as Array<Record<string, string>>);
+
+        if (entry.url) {
+          console.log(chalk.cyan(`Downloading ${appName} from URL...`));
+          await download(entry.url, path.resolve(entry.target));
+        } else if (entry.github) {
+          const [owner, repo, repoPath] = await parseGit(entry.github);
+          const url = await Getgit(owner, repo, repoPath);
+          console.log(chalk.cyan(`Downloading ${appName} from GitHub...`));
+          await download(url, path.resolve(entry.target));
+        } else if (entry.config) {
+          await symlinker(
+            path.resolve(entry.config),
+            path.resolve(entry.target),
+            appName
+          );
+        }
       }
     }
   }
+
+  if (parsedAny.Applications) {
+    await processApplications(parsedAny.Applications);
+  }
+
   console.log(chalk.green.bold("\nAll declarations processed."));
 }
 
@@ -243,4 +259,209 @@ export async function download(url: string, target: string) {
       `Configuration file ${target} created successfully.`
     )
   );
+}
+
+type PmName = "apt" | "pacman" | "dnf" | "winget" | "brew" | "choco" | "scoop";
+
+interface PmDefinition {
+  binary: string;
+  needsSudo: boolean;
+  commands: {
+    install: string[];
+    remove: string[];
+    update: string[];
+    upgrade: string[];
+    search: string[];
+    list: string[];
+    listOutdated: string[];
+  };
+}
+
+const PM_REGISTRY: Record<PmName, PmDefinition> = {
+  apt: {
+    binary: "apt",
+    needsSudo: true,
+    commands: {
+      install: ["install", "-y"],
+      remove: ["remove", "-y"],
+      update: ["install", "--only-upgrade", "-y"],
+      upgrade: ["upgrade", "-y"],
+      search: ["search"],
+      list: ["list", "--installed"],
+      listOutdated: ["list", "--upgradable"],
+    },
+  },
+  pacman: {
+    binary: "pacman",
+    needsSudo: true,
+    commands: {
+      install: ["-S", "--noconfirm"],
+      remove: ["-Rs", "--noconfirm"],
+      update: ["-S", "--noconfirm"],
+      upgrade: ["-Syu", "--noconfirm"],
+      search: ["-Ss"],
+      list: ["-Q"],
+      listOutdated: ["-Qu"],
+    },
+  },
+  dnf: {
+    binary: "dnf",
+    needsSudo: true,
+    commands: {
+      install: ["install", "-y"],
+      remove: ["remove", "-y"],
+      update: ["upgrade", "-y"],
+      upgrade: ["upgrade", "-y"],
+      search: ["search"],
+      list: ["list", "installed"],
+      listOutdated: ["list", "upgrades"],
+    },
+  },
+  winget: {
+    binary: "winget",
+    needsSudo: false,
+    commands: {
+      install: ["install", "--silent", "--accept-package-agreements"],
+      remove: ["uninstall", "--silent"],
+      update: ["upgrade", "--silent", "--accept-package-agreements"],
+      upgrade: ["upgrade", "--all", "--silent", "--accept-package-agreements"],
+      search: ["search"],
+      list: ["list"],
+      listOutdated: ["upgrade", "--all", "--silent", "--accept-package-agreements", "--dry-run"],
+    },
+  },
+  brew: {
+    binary: "brew",
+    needsSudo: false,
+    commands: {
+      install: ["install"],
+      remove: ["uninstall"],
+      update: ["upgrade"],
+      upgrade: ["upgrade"],
+      search: ["search"],
+      list: ["list"],
+      listOutdated: ["outdated"],
+    },
+  },
+  choco: {
+    binary: "choco",
+    needsSudo: true,
+    commands: {
+      install: ["install", "-y"],
+      remove: ["uninstall", "-y"],
+      update: ["upgrade", "-y"],
+      upgrade: ["upgrade", "all", "-y"],
+      search: ["search"],
+      list: ["list"],
+      listOutdated: ["outdated"],
+    },
+  },
+  scoop: {
+    binary: "scoop",
+    needsSudo: false,
+    commands: {
+      install: ["install"],
+      remove: ["uninstall"],
+      update: ["update"],
+      upgrade: ["update", "*"],
+      search: ["search"],
+      list: ["list"],
+      listOutdated: ["status"],
+    },
+  },
+};
+
+const PM_ORDER: PmName[] = ["winget", "choco", "scoop", "apt", "pacman", "dnf", "brew"];
+
+let detectedPm: PmName | null = null;
+
+export async function detectPackageManager(): Promise<PmName> {
+  if (detectedPm) return detectedPm;
+
+  const isWin = process.platform === "win32";
+  const whichCmd = isWin ? "where" : "which";
+
+  for (const pm of PM_ORDER) {
+    if (isWin && !["winget", "choco", "scoop"].includes(pm)) continue;
+    if (!isWin && ["winget", "choco", "scoop"].includes(pm)) continue;
+
+    try {
+      const result = await Bun.$`${whichCmd} ${pm}`.quiet();
+      if (result.exitCode === 0) {
+        detectedPm = pm;
+        return pm;
+      }
+    } catch {}
+  }
+  throw new Error("No supported package manager found on this system");
+}
+
+export function getPmName(): PmName {
+  if (!detectedPm) throw new Error("Run detectPackageManager() first");
+  return detectedPm;
+}
+
+async function runPm(action: keyof PmDefinition["commands"], pkg?: string) {
+  const pm = await detectPackageManager();
+  const def = PM_REGISTRY[pm];
+  const args = [...def.commands[action]];
+  if (pkg) args.push(pkg);
+  const binary = def.binary;
+  const cmd = def.needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
+  console.log(chalk.cyan(`Running: ${cmd.join(" ")}`));
+  const proc = Bun.spawnSync(cmd);
+  const out = proc.stdout.toString();
+  const errOut = proc.stderr.toString();
+  if (proc.exitCode !== 0) {
+    console.error(chalk.red(`Command failed (exit ${proc.exitCode}):`));
+    if (errOut) console.error(chalk.red(errOut));
+    if (out) console.log(out);
+    process.exit(1);
+  }
+  if (out) console.log(out);
+  if (errOut) console.error(chalk.yellow(errOut));
+}
+
+export async function appInstall(pkg: string) {
+  await runPm("install", pkg);
+}
+
+export async function appRemove(pkg: string) {
+  await runPm("remove", pkg);
+}
+
+export async function appUpdate(pkg: string) {
+  await runPm("update", pkg);
+}
+
+export async function appUpgrade() {
+  await runPm("upgrade");
+}
+
+export async function appSearch(query: string) {
+  await runPm("search", query);
+}
+
+export async function appList(outdated?: boolean) {
+  await runPm(outdated ? "listOutdated" : "list");
+}
+
+type ApplicationsConfig = z.infer<typeof ApplicationsSchema>;
+
+export async function processApplications(apps: ApplicationsConfig["Applications"]) {
+  if (!apps) return;
+  if (apps.install && apps.install.length > 0) {
+    console.log(chalk.blue(`Installing ${apps.install.length} application(s)...`));
+    await detectPackageManager();
+    for (const pkg of apps.install) {
+      await appInstall(pkg);
+    }
+  }
+  if (apps.remove && apps.remove.length > 0) {
+    console.log(chalk.blue(`Removing ${apps.remove.length} application(s)...`));
+    await detectPackageManager();
+    for (const pkg of apps.remove) {
+      await appRemove(pkg);
+    }
+  }
 }

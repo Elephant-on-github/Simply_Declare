@@ -12,5 +12,10 @@ Configs:
     - RemoteGit:
         - github: "Elephant-on-github:Simply_Declare:Example.yml"
         - target: "./test folder 1/remote_git.yml"
+Applications:
+    install:
+        - git
+        # - neovim
+        # - ripgrep
+    remove: []
 # Themes: false
-# Applications: false
