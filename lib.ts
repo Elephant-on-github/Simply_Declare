@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { z } from "zod";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import * as p from "@clack/prompts";
 
 
 const AppEntrySchema = z.array(
@@ -16,6 +17,7 @@ const ApplicationsSchema = z.object({
   Applications: z.object({
     install: z.array(z.string()).optional(),
     remove: z.array(z.string()).optional(),
+    apps: z.record(z.string(), z.array(z.string())).optional(),
   }).optional(),
 });
 
@@ -35,6 +37,10 @@ const MergedEntrySchema = z.object({
   target: z.string(),
   url: z.string().url().optional(),
   github: z.string().optional(),
+  if_os: z.string().optional(),
+  if_hostname: z.string().optional(),
+  if_file_exists: z.string().optional(),
+  if_env: z.string().optional(),
 }).refine(
   (data) => data.config || data.url || data.github,
   { message: "Entry must have one of: 'config', 'url', or 'github'" }
@@ -165,6 +171,8 @@ export async function main(configPath: string) {
       for (const [appName, entries] of Object.entries(appObj)) {
         const entry = resolveEntry(entries as Array<Record<string, string>>);
 
+        if (!checkConditions(entry, appName)) continue;
+
         if (entry.url) {
           console.log(chalk.cyan(`Downloading ${appName} from URL...`));
           await download(entry.url, path.resolve(entry.target));
@@ -191,27 +199,363 @@ export async function main(configPath: string) {
   console.log(chalk.green.bold("\nAll declarations processed."));
 }
 
+export function checkConditions(entry: z.infer<typeof MergedEntrySchema>, appName: string): boolean {
+  if (entry.if_os) {
+    const expected = entry.if_os.toLowerCase();
+    const current = process.platform;
+    const match =
+      expected === "win32" || expected === "windows" ? current === "win32" :
+      expected === "darwin" || expected === "macos" ? current === "darwin" :
+      expected === current;
+    if (!match) {
+      console.log(chalk.dim(`  Skipping ${appName} — OS condition not met (expected "${entry.if_os}", got "${current}")`));
+      return false;
+    }
+  }
+
+  if (entry.if_hostname) {
+    const hostname = require("os").hostname();
+    if (hostname !== entry.if_hostname) {
+      console.log(chalk.dim(`  Skipping ${appName} — hostname condition not met (expected "${entry.if_hostname}", got "${hostname}")`));
+      return false;
+    }
+  }
+
+  if (entry.if_file_exists) {
+    const resolved = path.resolve(entry.if_file_exists);
+    if (!fs.existsSync(resolved)) {
+      console.log(chalk.dim(`  Skipping ${appName} — file not found: ${resolved}`));
+      return false;
+    }
+  }
+
+  if (entry.if_env) {
+    if (!process.env[entry.if_env]) {
+      console.log(chalk.dim(`  Skipping ${appName} — env var "${entry.if_env}" is not set`));
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const COMMON_APPS: Record<string, string[]> = {
+  windows: [
+    "git", "nodejs", "rustup", "python", "vscode", "obsidian",
+    "docker", "neovim", "wezterm", "alacritty", "7zip", "vlc",
+  ],
+  linux: [
+    "git", "nodejs", "rustup", "python3", "code", "docker",
+    "neovim", "build-essential", "curl", "wget",
+  ],
+  darwin: [
+    "git", "node", "rustup", "python3", "visual-studio-code",
+    "docker", "neovim", "wezterm", "alacritty",
+  ],
+};
+
+async function addConfigEntriesTUI(config: any[]) {
+  let adding = true;
+  while (adding) {
+    const name = (await p.text({
+      message: "Name for this config entry (e.g. WezTerm, Neovim):",
+      validate: (v) => (v ? undefined : "Name is required"),
+    })) as string;
+    if (p.isCancel(name)) break;
+
+    const sourceType = (await p.select({
+      message: "Source type:",
+      options: [
+        { value: "config", label: "Local file (symlink)" },
+        { value: "url", label: "Download from URL" },
+        { value: "github", label: "GitHub raw file" },
+      ],
+    })) as string;
+    if (p.isCancel(sourceType)) break;
+
+    let sourceValue: string;
+    if (sourceType === "github") {
+      sourceValue = (await p.text({
+        message: "GitHub reference (format: owner:repo:path):",
+        validate: (v) =>
+          (v ?? "").split(":").length === 3
+            ? undefined
+            : "Must be in format owner:repo:path",
+      })) as string;
+    } else if (sourceType === "url") {
+      sourceValue = (await p.text({
+        message: "URL to download:",
+        validate: (v) => (v ? undefined : "URL is required"),
+      })) as string;
+    } else {
+      sourceValue = (await p.text({
+        message: "Path to local config file:",
+        validate: (v) => (v ? undefined : "Path is required"),
+      })) as string;
+    }
+    if (p.isCancel(sourceValue)) break;
+
+    const target = (await p.text({
+      message: "Target path (where to place the config):",
+      validate: (v) => (v ? undefined : "Target path is required"),
+    })) as string;
+    if (p.isCancel(target)) break;
+
+    const addConditions = await p.confirm({
+      message: "Add conditions for this entry?",
+      initialValue: false,
+    });
+    if (p.isCancel(addConditions)) break;
+
+    let if_os: string | undefined;
+    let if_hostname: string | undefined;
+    let if_file_exists: string | undefined;
+    let if_env: string | undefined;
+
+    if (addConditions) {
+      const conditionType = (await p.multiselect({
+        message: "Select conditions to add:",
+        options: [
+          { value: "if_os", label: "OS filter" },
+          { value: "if_hostname", label: "Hostname filter" },
+          { value: "if_file_exists", label: "File exists filter" },
+          { value: "if_env", label: "Environment variable set" },
+        ],
+      })) as string[];
+      if (p.isCancel(conditionType)) break;
+
+      if (conditionType.includes("if_os")) {
+        if_os = (await p.select({
+          message: "Only run on which OS?",
+          options: [
+            { value: "win32", label: "Windows" },
+            { value: "linux", label: "Linux" },
+            { value: "darwin", label: "macOS" },
+          ],
+        })) as string;
+      }
+      if (conditionType.includes("if_hostname")) {
+        if_hostname = (await p.text({
+          message: "Expected hostname:",
+          placeholder: require("os").hostname(),
+        })) as string;
+      }
+      if (conditionType.includes("if_file_exists")) {
+        if_file_exists = (await p.text({
+          message: "Only run if this file exists:",
+        })) as string;
+      }
+      if (conditionType.includes("if_env")) {
+        if_env = (await p.text({
+          message: "Only run if this env var is set:",
+        })) as string;
+      }
+    }
+
+    const entry: any[] = [[name, [] as any[]]];
+    // We need to build the format: [{name: {config: ..., target: ...}}]
+    // Actually the format is: [{AppName: [{config: "..."}, {target: "..."}]}]
+    const entryObj: Record<string, any> = {};
+    entryObj[name] = [
+      { [sourceType]: sourceValue },
+      { target },
+    ];
+    if (if_os) entryObj[name].push({ if_os });
+    if (if_hostname) entryObj[name].push({ if_hostname });
+    if (if_file_exists) entryObj[name].push({ if_file_exists });
+    if (if_env) entryObj[name].push({ if_env });
+
+    config.push(entryObj);
+
+    const more = await p.confirm({
+      message: "Add another config entry?",
+      initialValue: false,
+    });
+    if (p.isCancel(more)) break;
+    adding = more;
+  }
+}
+
 export async function initConfig() {
-  console.warn(chalk.yellow("This feature Curls from a Github Repository."));
-  const response = prompt(
-    chalk.yellow("Do you want to proceed? (y/n): ")
-  );
-  if (response?.toLowerCase() === "y") {
-    console.log(chalk.green("Proceeding with initialization..."));
-    const responsefile = await fetch(
-      "https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml"
-    );
-    const responseText = await responsefile.text();
-    await Bun.write(Bun.file("SimplyDeclare.yml"), responseText);
-    console.log(
-      chalk.green(
-        "Configuration file 'SimplyDeclare.yml' created successfully."
-      )
-    );
-  } else {
-    console.log(chalk.red("Initialization cancelled by user."));
+  p.intro(chalk.bgBlue(" simply-declare init "));
+
+  const whatToDo = await p.multiselect({
+    message: "What would you like to set up?",
+    options: [
+      { value: "configs", label: "Config symlinks/downloads" },
+      { value: "apps", label: "Application management (install/remove)" },
+    ],
+    required: true,
+  });
+  if (p.isCancel(whatToDo)) {
+    p.cancel("Cancelled.");
     process.exit(0);
   }
+
+  const config: Record<string, any> = {};
+
+  if (whatToDo.includes("configs")) {
+    const configs: any[] = [];
+    await addConfigEntriesTUI(configs);
+    config.Configs = configs;
+  }
+
+  if (whatToDo.includes("apps")) {
+    const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
+    const commonApps = COMMON_APPS[platform] || [];
+
+    const mode = await p.select({
+      message: "How to manage packages?",
+      options: [
+        { value: "auto", label: "Auto-detect package manager (simple)" },
+        { value: "perpm", label: "Assign packages per package manager" },
+        { value: "both", label: "Both" },
+      ],
+    });
+    if (p.isCancel(mode)) { p.cancel("Cancelled."); process.exit(0); }
+
+    config.Applications = {};
+
+    if (mode === "auto" || mode === "both") {
+      const install = await p.multiselect({
+        message: "Select applications to install:",
+        options: [
+          ...commonApps.map((a) => ({ value: a, label: a })),
+          { value: "__custom__", label: "Custom package..." },
+        ],
+      });
+      if (p.isCancel(install)) { p.cancel("Cancelled."); process.exit(0); }
+
+      const installList: string[] = [];
+      for (const item of (install as string[])) {
+        if (item === "__custom__") {
+          const custom = await p.text({ message: "Package name to install:" });
+          if (!p.isCancel(custom) && custom) installList.push(custom);
+        } else {
+          installList.push(item);
+        }
+      }
+
+      const remove = await p.multiselect({
+        message: "Select applications to remove:",
+        options: [
+          ...commonApps.map((a) => ({ value: a, label: a })),
+          { value: "__custom__", label: "Custom package..." },
+        ],
+      });
+      if (p.isCancel(remove)) { p.cancel("Cancelled."); process.exit(0); }
+
+      const removeList: string[] = [];
+      for (const item of (remove as string[])) {
+        if (item === "__custom__") {
+          const custom = await p.text({ message: "Package name to remove:" });
+          if (!p.isCancel(custom) && custom) removeList.push(custom);
+        } else {
+          removeList.push(item);
+        }
+      }
+
+      if (installList.length) config.Applications.install = installList;
+      if (removeList.length) config.Applications.remove = removeList;
+    }
+
+    if (mode === "perpm" || mode === "both") {
+      const knownPms = process.platform === "win32"
+        ? ["winget", "choco", "scoop"]
+        : ["apt", "pacman", "dnf", "brew"];
+      const selectedPms = await p.multiselect({
+        message: "Which package managers to configure?",
+        options: knownPms.map((pm) => ({ value: pm, label: pm })),
+      });
+      if (p.isCancel(selectedPms)) { p.cancel("Cancelled."); process.exit(0); }
+
+      const appsRecord: Record<string, string[]> = {};
+      for (const pm of (selectedPms as string[])) {
+        const pkgs = await p.text({
+          message: `Packages for ${pm} (comma-separated):`,
+          placeholder: "cowsay, neofetch, lolcat",
+        });
+        if (p.isCancel(pkgs)) { p.cancel("Cancelled."); process.exit(0); }
+        const list = (pkgs as string).split(",").map((s) => s.trim()).filter(Boolean);
+        if (list.length) appsRecord[pm] = list;
+      }
+
+      if (Object.keys(appsRecord).length) config.Applications.apps = appsRecord;
+    }
+  }
+
+  const yaml = stringifyYaml(config);
+  await Bun.write(Bun.file("SimplyDeclare.yml"), yaml);
+
+  p.outro(chalk.green("Configuration file 'SimplyDeclare.yml' created successfully."));
+}
+
+export async function configInteractive() {
+  const configPath = "SimplyDeclare.yml";
+  const exists = await Bun.file(configPath).exists();
+  if (!exists) {
+    console.error(chalk.red("No 'SimplyDeclare.yml' found. Run 'simply-declare init' first."));
+    process.exit(1);
+  }
+
+  const content = await Getfile(configPath);
+  let doc: any;
+  try {
+    doc = parseYaml(content);
+  } catch (error: any) {
+    console.error(chalk.red(`Failed to parse YAML: ${error.message}`));
+    process.exit(1);
+  }
+
+  p.intro(chalk.bgBlue(" simply-declare config "));
+
+  let editing = true;
+  while (editing) {
+    const numConfigs = doc.Configs?.length || 0;
+    const hasApps = !!doc.Applications;
+    const action = await p.select({
+      message: `Current config: ${numConfigs} config entr${numConfigs === 1 ? "y" : "ies"}${hasApps ? ", Applications section" : ""}`,
+      options: [
+        { value: "add", label: "Add a config entry" },
+        ...(numConfigs > 0 ? [{ value: "remove", label: "Remove a config entry" }] : []),
+        { value: "view", label: "View full config" },
+        { value: "done", label: "Done editing" },
+      ],
+    });
+    if (p.isCancel(action)) break;
+
+    if (action === "add") {
+      if (!doc.Configs) doc.Configs = [];
+      await addConfigEntriesTUI(doc.Configs);
+    } else if (action === "remove") {
+      const choices = doc.Configs.map((c: any, i: number) => ({
+        value: i,
+        label: Object.keys(c)[0] || `Entry #${i + 1}`,
+      }));
+      const toRemove = await p.multiselect({
+        message: "Select entries to remove:",
+        options: choices,
+      });
+      if (p.isCancel(toRemove)) continue;
+      const sorted = [...toRemove].sort((a, b) => (b as number) - (a as number));
+      for (const idx of sorted) {
+        doc.Configs.splice(idx, 1);
+      }
+    } else if (action === "view") {
+      console.log(chalk.cyan("\nCurrent configuration:\n"));
+      console.log(stringifyYaml(doc));
+      await p.select({
+        message: "Press Enter to continue",
+        options: [{ value: "ok", label: "OK" }],
+      });
+    } else if (action === "done") {
+      editing = false;
+    }
+  }
+
+  const yaml = stringifyYaml(doc);
+  await Bun.write(Bun.file(configPath), yaml);
+  p.outro(chalk.green("Configuration saved."));
 }
 
 export async function parseGit(input_from_config: string) : Promise<[string, string, string]> {
@@ -502,6 +846,10 @@ export async function appInstall(pkg: string) {
   await runPm("install", pkg);
 }
 
+export async function appInstallOn(pm: PmName, pkg: string) {
+  await runPmFor(pm, "install", pkg);
+}
+
 export async function appRemove(pkg: string) {
   await runPm("remove", pkg);
 }
@@ -526,22 +874,132 @@ export async function appList(outdated?: boolean) {
   }
 }
 
+async function pickPackages(message: string, allowNone = false): Promise<string[]> {
+  const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
+  const common = COMMON_APPS[platform] || [];
+
+  const selected = await p.multiselect({
+    message,
+    options: [
+      ...common.map((a) => ({ value: a, label: a })),
+      { value: "__custom__", label: "Custom package..." },
+    ],
+    required: !allowNone,
+  });
+  if (p.isCancel(selected)) return [];
+
+  const result: string[] = [];
+  for (const item of selected) {
+    if (item === "__custom__") {
+      const custom = await p.text({ message: "Package name:" });
+      if (!p.isCancel(custom) && custom) result.push(custom);
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+export async function appInteractive() {
+  p.intro(chalk.bgBlue(" simply-declare app "));
+
+  await detectPackageManagers();
+
+  let running = true;
+  while (running) {
+    const action = await p.select({
+      message: "Application Manager",
+      options: [
+        { value: "install", label: "Install packages" },
+        { value: "remove", label: "Remove packages" },
+        { value: "update", label: "Update packages" },
+        { value: "upgrade", label: "Upgrade all packages" },
+        { value: "search", label: "Search for a package" },
+        { value: "list", label: "List installed packages" },
+        { value: "outdated", label: "List outdated packages" },
+        { value: "exit", label: "Exit" },
+      ],
+    });
+    if (p.isCancel(action)) break;
+
+    if (action === "install") {
+      const pkgs = await pickPackages("Select packages to install:");
+      for (const pkg of pkgs) await appInstall(pkg);
+      if (pkgs.length) console.log(chalk.green(`Installed ${pkgs.length} package(s).`));
+    } else if (action === "remove") {
+      const pkgs = await pickPackages("Select packages to remove:");
+      for (const pkg of pkgs) await appRemove(pkg);
+      if (pkgs.length) console.log(chalk.green(`Removed ${pkgs.length} package(s).`));
+    } else if (action === "update") {
+      const pkgs = await pickPackages("Select packages to update:");
+      for (const pkg of pkgs) await appUpdate(pkg);
+      if (pkgs.length) console.log(chalk.green(`Updated ${pkgs.length} package(s).`));
+    } else if (action === "upgrade") {
+      const confirm = await p.confirm({ message: "Upgrade all packages?", initialValue: false });
+      if (confirm) await appUpgrade();
+    } else if (action === "search") {
+      const query = await p.text({ message: "Search query:", placeholder: "e.g. neovim" });
+      if (!p.isCancel(query) && query) await appSearch(query);
+    } else if (action === "list") {
+      await appList(false);
+    } else if (action === "outdated") {
+      await appList(true);
+    } else if (action === "exit") {
+      running = false;
+    }
+
+    if (running && action !== "exit") {
+      await p.select({
+        message: "Press Enter to continue",
+        options: [{ value: "ok", label: "OK" }],
+      });
+    }
+  }
+
+  p.outro(chalk.green("Done."));
+}
+
 type ApplicationsConfig = z.infer<typeof ApplicationsSchema>;
+
+const PM_NAME_MAP: Record<string, PmName> = {
+  winget: "winget", choco: "choco", scoop: "scoop",
+  apt: "apt", pacman: "pacman", dnf: "dnf", brew: "brew",
+};
 
 export async function processApplications(apps: ApplicationsConfig["Applications"]) {
   if (!apps) return;
+
+  await detectPackageManagers();
+
   if (apps.install && apps.install.length > 0) {
     console.log(chalk.blue(`Installing ${apps.install.length} application(s)...`));
-    await detectPackageManagers();
     for (const pkg of apps.install) {
       await appInstall(pkg);
     }
   }
+
   if (apps.remove && apps.remove.length > 0) {
     console.log(chalk.blue(`Removing ${apps.remove.length} application(s)...`));
-    await detectPackageManagers();
     for (const pkg of apps.remove) {
       await appRemove(pkg);
+    }
+  }
+
+  if (apps.apps) {
+    for (const [pmName, pkgs] of Object.entries(apps.apps as Record<string, string[]>)) {
+      const pm = PM_NAME_MAP[pmName.toLowerCase()];
+      if (!pm) {
+        console.warn(chalk.yellow(`  Unknown package manager "${pmName}" — skipping`));
+        continue;
+      }
+      if (!binaryExists(pm)) {
+        console.warn(chalk.yellow(`  Package manager "${pmName}" not found — skipping its packages`));
+        continue;
+      }
+      console.log(chalk.blue(`  [${pmName}] Installing ${pkgs.length} package(s)...`));
+      for (const pkg of pkgs) {
+        await appInstallOn(pm, pkg);
+      }
     }
   }
 }

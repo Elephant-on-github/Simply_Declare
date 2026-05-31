@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { parse as parseYaml } from "yaml";
-import { initConfig, main, validateConfig, appInstall, appRemove, appUpdate, appUpgrade, appSearch, appList } from "./lib"
+import { initConfig, configInteractive, main, validateConfig, appInstall, appRemove, appUpdate, appUpgrade, appSearch, appList, appInteractive } from "./lib"
 import { readFileSync } from "node:fs";
 
 const program = new Command();
@@ -17,6 +17,13 @@ program
   .action(async () => {
     console.log(chalk.blue("Creating a new configuration file..."));
     initConfig();
+  });
+
+program
+  .command("config")
+  .description("Interactively edit the configuration file")
+  .action(async () => {
+    await configInteractive();
   });
 
 program
@@ -46,30 +53,45 @@ program
 
 const app = program
   .command("app")
-  .description("Manage system packages via the native package manager");
+  .description("Manage system packages via the native package manager")
+  .action(async () => {
+    await appInteractive();
+  });
 
 app
-  .command("install <package...>")
-  .description("Install one or more packages")
+  .command("install [package...]")
+  .description("Install one or more packages (omit for interactive)")
   .action(async (packages: string[]) => {
+    if (packages.length === 0) {
+      await appInteractive();
+      return;
+    }
     for (const pkg of packages) {
       await appInstall(pkg);
     }
   });
 
 app
-  .command("remove <package...>")
-  .description("Remove one or more packages")
+  .command("remove [package...]")
+  .description("Remove one or more packages (omit for interactive)")
   .action(async (packages: string[]) => {
+    if (packages.length === 0) {
+      await appInteractive();
+      return;
+    }
     for (const pkg of packages) {
       await appRemove(pkg);
     }
   });
 
 app
-  .command("update <package...>")
-  .description("Update one or more packages")
+  .command("update [package...]")
+  .description("Update one or more packages (omit for interactive)")
   .action(async (packages: string[]) => {
+    if (packages.length === 0) {
+      await appInteractive();
+      return;
+    }
     for (const pkg of packages) {
       await appUpdate(pkg);
     }
@@ -83,9 +105,13 @@ app
   });
 
 app
-  .command("search <query>")
-  .description("Search for packages")
+  .command("search [query]")
+  .description("Search for packages (omit for interactive)")
   .action(async (query: string) => {
+    if (!query) {
+      await appInteractive();
+      return;
+    }
     await appSearch(query);
   });
 

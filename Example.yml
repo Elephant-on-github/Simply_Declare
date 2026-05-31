@@ -6,6 +6,7 @@ Configs:
     - Alacritty:
         - config: "./alacritty.yml"
         - target: "./test folder 1/alacritty.yml"
+        - if_os: "linux"
     - RemoteUrl:
         - url: "https://raw.githubusercontent.com/Elephant-on-github/Simply_Declare/refs/heads/main/Example.yml"
         - target: "./test folder 1/remote_url.yml"
@@ -18,4 +19,10 @@ Applications:
         # - neovim
         # - ripgrep
     remove: []
+    apps:
+        winget:
+            - powertoys
+            - microsoft-windows-terminal
+        scoop:
+            - cowsay
 # Themes: false

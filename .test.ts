@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseGit, Getgit, validateConfig, detectPackageManagers, detectPackageManager, getPmName, getAllPmNames } from "./lib";
+import { parseGit, Getgit, validateConfig, checkConditions, detectPackageManagers, detectPackageManager, getPmName, getAllPmNames } from "./lib";
 
 describe("parseGit", () => {
   it("parses a valid owner:repo:path spec", async () => {
@@ -155,6 +155,78 @@ describe("validateConfig with Applications", () => {
     };
     const result = validateConfig(input);
     expect(result.success).toBe(true);
+  });
+
+  it("accepts a config with per-pm apps", () => {
+    const input = {
+      Configs: [],
+      Applications: {
+        apps: {
+          winget: ["powertoys", "terminal"],
+          scoop: ["cowsay"],
+        },
+      },
+    };
+    const result = validateConfig(input);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("checkConditions", () => {
+  it("passes when no conditions are set", () => {
+    const entry = { target: "./x", config: "./y" };
+    expect(checkConditions(entry, "test")).toBe(true);
+  });
+
+  it("passes when if_os matches current platform", () => {
+    const entry = { target: "./x", config: "./y", if_os: process.platform };
+    expect(checkConditions(entry, "test")).toBe(true);
+  });
+
+  it("fails when if_os does not match", () => {
+    const wrong = process.platform === "win32" ? "linux" : "win32";
+    const entry = { target: "./x", config: "./y", if_os: wrong };
+    expect(checkConditions(entry, "test")).toBe(false);
+  });
+
+  it("accepts 'windows' alias for win32", () => {
+    if (process.platform === "win32") {
+      const entry = { target: "./x", config: "./y", if_os: "windows" };
+      expect(checkConditions(entry, "test")).toBe(true);
+    }
+  });
+
+  it("accepts 'macos' alias for darwin", () => {
+    if (process.platform === "darwin") {
+      const entry = { target: "./x", config: "./y", if_os: "macos" };
+      expect(checkConditions(entry, "test")).toBe(true);
+    }
+  });
+
+  it("fails when if_file_exists file is missing", () => {
+    const entry = { target: "./x", config: "./y", if_file_exists: "./nonexistent-file-12345" };
+    expect(checkConditions(entry, "test")).toBe(false);
+  });
+
+  it("passes when if_file_exists file exists", () => {
+    const entry = { target: "./x", config: "./y", if_file_exists: "./package.json" };
+    expect(checkConditions(entry, "test")).toBe(true);
+  });
+
+  it("fails when if_env var is not set", () => {
+    const entry = { target: "./x", config: "./y", if_env: "__UNLIKELY_ENV_VAR_ZZZ__" };
+    expect(checkConditions(entry, "test")).toBe(false);
+  });
+
+  it("passes when if_env var is set", () => {
+    const entry = { target: "./x", config: "./y", if_env: "PATH" };
+    expect(checkConditions(entry, "test")).toBe(true);
+  });
+
+  it("passes when if_hostname matches", () => {
+    const hostname = require("os").hostname();
+    const entry = { target: "./x", config: "./y", if_hostname: hostname };
+    expect(checkConditions(entry, "test")).toBe(true);
   });
 });
 
