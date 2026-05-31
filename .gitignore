@@ -40,3 +40,6 @@ cli.json
 test folder 1/
 lua.lua
 zodtest.ts
+
+#output of bun run build
+simply-declare.exe
