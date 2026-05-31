@@ -373,7 +373,7 @@ const PM_REGISTRY: Record<PmName, PmDefinition> = {
 
 const PM_ORDER: PmName[] = ["winget", "choco", "scoop", "apt", "pacman", "dnf", "brew"];
 
-let detectedPm: PmName | null = null;
+let detectedPms: PmName[] | null = null;
 
 function resolveBinaryPath(binary: string): string | null {
   const isWin = process.platform === "win32";
@@ -409,47 +409,58 @@ function binaryExists(binary: string): boolean {
   return resolveBinaryPath(binary) !== null;
 }
 
-export async function detectPackageManager(): Promise<PmName> {
-  if (detectedPm) return detectedPm;
+export async function detectPackageManagers(): Promise<PmName[]> {
+  if (detectedPms) return detectedPms;
 
   const isWin = process.platform === "win32";
+  const found: PmName[] = [];
 
   for (const pm of PM_ORDER) {
     if (isWin && !["winget", "choco", "scoop"].includes(pm)) continue;
     if (!isWin && ["winget", "choco", "scoop"].includes(pm)) continue;
 
     if (binaryExists(pm)) {
-      detectedPm = pm;
-      return pm;
+      found.push(pm);
     }
   }
-  throw new Error("No supported package manager found on this system");
+
+  if (found.length === 0) {
+    throw new Error("No supported package manager found on this system");
+  }
+
+  detectedPms = found;
+  return found;
+}
+
+export async function detectPackageManager(): Promise<PmName> {
+  const all = await detectPackageManagers();
+  return all[0]!;
 }
 
 export function getPmName(): PmName {
-  if (!detectedPm) throw new Error("Run detectPackageManager() first");
-  return detectedPm;
+  if (!detectedPms) throw new Error("Run detectPackageManagers() first");
+  return detectedPms[0]!;
 }
 
-async function runPm(action: keyof PmDefinition["commands"], pkg?: string) {
-  const pm = await detectPackageManager();
-  const def = PM_REGISTRY[pm];
-  const args = [...def.commands[action]];
-  if (pkg) args.push(pkg);
-  const binary = resolveBinaryPath(def.binary) || def.binary;
-  const cmd = def.needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
-  console.log(chalk.cyan(`Running: ${cmd.join(" ")}`));
-  let proc: import("bun").SyncSubprocess;
+export function getAllPmNames(): PmName[] {
+  if (!detectedPms) throw new Error("Run detectPackageManagers() first");
+  return [...detectedPms];
+}
+
+function spawnCmd(cmd: string[]): import("bun").SyncSubprocess {
   if (process.platform === "win32") {
     const shellCmd = cmd.map(a => /[\s"]/.test(a) ? `"${a}"` : a).join(" ");
-    proc = Bun.spawnSync(["cmd.exe", "/c", shellCmd]);
-  } else {
-    proc = Bun.spawnSync(cmd);
+    return Bun.spawnSync(["cmd.exe", "/c", shellCmd]);
   }
+  return Bun.spawnSync(cmd);
+}
+
+function printResult(proc: import("bun").SyncSubprocess) {
   const out = (proc.stdout || "").toString();
   const errOut = (proc.stderr || "").toString();
   const cleanOut = out.replace(/[\r\n]+/g, "\n").replace(/\s+$/, "");
   const cleanErr = errOut.replace(/[\r\n]+/g, "\n").replace(/\s+$/, "");
+
   if (proc.exitCode !== 0) {
     if (cleanErr) console.error(chalk.yellow(cleanErr));
     if (cleanOut) console.log(cleanOut);
@@ -459,6 +470,30 @@ async function runPm(action: keyof PmDefinition["commands"], pkg?: string) {
   } else {
     if (cleanOut) console.log(cleanOut);
     if (cleanErr) console.error(chalk.yellow(cleanErr));
+  }
+}
+
+async function runPmFor(pm: PmName, action: keyof PmDefinition["commands"], pkg?: string) {
+  const def = PM_REGISTRY[pm];
+  const args = [...def.commands[action]];
+  if (pkg) args.push(pkg);
+  const binary = resolveBinaryPath(def.binary) || def.binary;
+  const cmd = def.needsSudo ? ["sudo", binary, ...args] : [binary, ...args];
+  console.log(chalk.cyan(`  [${pm}] ${cmd.join(" ")}`));
+  const proc = spawnCmd(cmd);
+  printResult(proc);
+}
+
+async function runPm(action: keyof PmDefinition["commands"], pkg?: string) {
+  const pm = await detectPackageManager();
+  await runPmFor(pm, action, pkg);
+}
+
+async function runPmAll(action: keyof PmDefinition["commands"]) {
+  const all = await detectPackageManagers();
+  for (const pm of all) {
+    console.log(chalk.blue(`\n${pm}:`));
+    await runPmFor(pm, action);
   }
 }
 
@@ -475,7 +510,7 @@ export async function appUpdate(pkg: string) {
 }
 
 export async function appUpgrade() {
-  await runPm("upgrade");
+  await runPmAll("upgrade");
 }
 
 export async function appSearch(query: string) {
@@ -483,7 +518,11 @@ export async function appSearch(query: string) {
 }
 
 export async function appList(outdated?: boolean) {
-  await runPm(outdated ? "listOutdated" : "list");
+  if (outdated) {
+    await runPmAll("listOutdated");
+  } else {
+    await runPmAll("list");
+  }
 }
 
 type ApplicationsConfig = z.infer<typeof ApplicationsSchema>;
@@ -492,14 +531,14 @@ export async function processApplications(apps: ApplicationsConfig["Applications
   if (!apps) return;
   if (apps.install && apps.install.length > 0) {
     console.log(chalk.blue(`Installing ${apps.install.length} application(s)...`));
-    await detectPackageManager();
+    await detectPackageManagers();
     for (const pkg of apps.install) {
       await appInstall(pkg);
     }
   }
   if (apps.remove && apps.remove.length > 0) {
     console.log(chalk.blue(`Removing ${apps.remove.length} application(s)...`));
-    await detectPackageManager();
+    await detectPackageManagers();
     for (const pkg of apps.remove) {
       await appRemove(pkg);
     }

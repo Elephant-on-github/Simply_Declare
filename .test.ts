@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseGit, Getgit, validateConfig, detectPackageManager, getPmName } from "./lib";
+import { parseGit, Getgit, validateConfig, detectPackageManagers, detectPackageManager, getPmName, getAllPmNames } from "./lib";
 
 describe("parseGit", () => {
   it("parses a valid owner:repo:path spec", async () => {
@@ -158,21 +158,36 @@ describe("validateConfig with Applications", () => {
   });
 });
 
-describe("detectPackageManager", () => {
-  it("detects a package manager on this system", async () => {
-    const pm = await detectPackageManager();
-    expect(["winget", "choco", "scoop", "apt", "pacman", "dnf", "brew"]).toContain(pm);
+describe("detectPackageManagers", () => {
+  it("detects at least one package manager on this system", async () => {
+    const all = await detectPackageManagers();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    for (const pm of all) {
+      expect(["winget", "choco", "scoop", "apt", "pacman", "dnf", "brew"]).toContain(pm);
+    }
   });
 
-  it("returns the same PM on repeated calls", async () => {
-    const pm1 = await detectPackageManager();
-    const pm2 = await detectPackageManager();
-    expect(pm1).toBe(pm2);
+  it("returns the same list on repeated calls", async () => {
+    const all1 = await detectPackageManagers();
+    const all2 = await detectPackageManagers();
+    expect(all1).toEqual(all2);
   });
 
-  it("getPmName returns the detected PM", async () => {
-    await detectPackageManager();
+  it("getPmName returns the first detected PM", async () => {
+    await detectPackageManagers();
     const name = getPmName();
     expect(name).toBeTruthy();
+  });
+
+  it("getAllPmNames returns all detected PMs", async () => {
+    await detectPackageManagers();
+    const all = getAllPmNames();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detectPackageManager returns the first PM (backwards compat)", async () => {
+    const pm = await detectPackageManager();
+    const all = await detectPackageManagers();
+    expect(pm).toBe(all[0]);
   });
 });
